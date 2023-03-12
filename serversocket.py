@@ -8,7 +8,9 @@ import sys
 import json
 import os
 
+
 def close_server(sock):
+    '''Cierra el servidor y el programa.'''
     print('Cerrando servidor...')
     sock.close()
     sys.exit(0)
@@ -17,18 +19,25 @@ def close_server(sock):
 def main():
     # Crea un fichero para almacenar los NONCE si no existe
     if not os.path.exists('nonces.json'):
-        json.dump({'nonces': []}, open('nonces.json', 'w'))
-    
+        json.dump({'nonces': []}, open('nonces.json', 'w', encoding='utf-8'))
+
     # Carga los NONCE del fichero
-    nonces_json = json.load(open('nonces.json', 'r'))
-    
+    nonces_json = json.load(open('nonces.json', 'r', encoding='utf-8'))
+
+    # Crear un fichero para almacenar los logs
+    if not os.path.exists('logs.txt'):
+        open('logs.txt', 'w', encoding='utf-8')
+
+    # Cargar el fichero de logs
+    logs_txt = open('logs.txt', 'r+', encoding='utf-8')
+
     # Crea un socket y escucha las conexiones entrantes
     server_address = ('localhost', 3030)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(server_address)
     sock.listen(1)
     print('Servidor iniciado en {}:{}'.format(*server_address))
-    
+
     # Configurar el manejo de teclas
     keyboard.add_hotkey('ctrl+c', close_server, args=(sock,))
 
@@ -41,28 +50,35 @@ def main():
             # Recibir petición de NONCE
             nonce_request = connection.recv(1024)
 
-            if nonce_request.decode() == 'NONCE':
-                # Inicializar NONCE
-                nonce = 0
+            # Conexión sin petición de NONCE
+            if nonce_request.decode() != 'NONCE':
+                message = 'Error: La petición no es válida, posible ataque de reply.'
+                current_time = time.strftime('%Y-%m-%d %H:%M:%S')
+                logs_txt.write(f"[{current_time}]: {message}\n")
+                connection.sendall(bytes(message, 'utf-8'))
+                continue
 
-                while nonce == 0 or nonce in nonces_json["nonces"]:
-                    # Generar NONCE aleatorio
-                    nonce = str(random.randint(0, 2^256)).encode()
+            # Inicializar NONCE
+            nonce = 0
 
-                    # Comprobar que el NONCE no existe
-                    if nonce not in nonces_json["nonces"]:
-                        # Añadir NONCE al fichero
-                        with open('nonces.json', 'r+') as file:
-                            nonces_json["nonces"].append(nonce.decode())
-                            file.seek(0)
-                            json.dump(nonces_json, file)
-                            file.truncate()
-                        
-                        print('NONCE generado:', nonce.decode())
+            while nonce == 0 or nonce in nonces_json["nonces"]:
+                # Generar NONCE aleatorio
+                nonce = str(random.randint(0, 2 ^ 256)).encode()
 
-                        # Enviar NONCE al cliente
-                        connection.sendall(nonce)
-                        break
+                # Comprobar que el NONCE no existe
+                if nonce not in nonces_json["nonces"]:
+                    # Añadir NONCE al fichero
+                    with open('nonces.json', 'r+') as file:
+                        nonces_json["nonces"].append(nonce.decode())
+                        file.seek(0)
+                        json.dump(nonces_json, file)
+                        file.truncate()
+
+                    print('NONCE generado:', nonce.decode())
+
+                    # Enviar NONCE al cliente
+                    connection.sendall(nonce)
+                    break
 
             # Esperar 30 segundo a los datos, HMAC y clave pública
             print('Esperando transferencia...')
@@ -83,6 +99,8 @@ def main():
 
             if hmac_calculated != hmac_received.decode():
                 message = 'Error: El mensaje ha sido alterado o no se puede verificar la fuente.'
+                current_time = time.strftime('%Y-%m-%d %H:%M:%S')
+                logs_txt.write(f"[{current_time}]: {message}\n")
             else:
                 # Procesa la transferencia
                 transfer = data.decode().split(',')
@@ -93,7 +111,7 @@ def main():
                     account_from, account_to, amount)
 
             connection.sendall(bytes(message, 'utf-8'))
-            
+
         except Exception as e:
             print(e)
 

@@ -14,10 +14,21 @@ def main():
 
     try:
         # Solicitar NONCE al servidor
-        sock.sendall(b'NONCE')
+        sock.sendall(b'NOCE')
 
         # Recibir NONCE del servidor
         nonce = sock.recv(1024)
+        
+        # Comprobar que el nonce es un número, sino es un mensaje de error
+        try:
+            n_nonce = int(nonce)
+        except ValueError:
+            # Cerrar la conexión
+            print('Cerrando conexión')
+            sock.close()
+            # Mostrar el mensaje de error
+            print(nonce.decode())
+            return
 
         print('NONCE recibido:', nonce.decode())
 
